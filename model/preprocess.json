@@ -1,0 +1,152 @@
+{
+ "numeric": [
+  {
+   "name": "age",
+   "median": 20.0,
+   "mean": 22.67753001715266,
+   "scale": 7.027599227558941
+  },
+  {
+   "name": "admission_grade",
+   "median": 7.4,
+   "mean": 7.400171526586621,
+   "scale": 2.127390855403287
+  },
+  {
+   "name": "international",
+   "median": 0.0,
+   "mean": 0.22984562607204118,
+   "scale": 0.42073342421014354
+  },
+  {
+   "name": "first_gen",
+   "median": 1.0,
+   "mean": 0.7981703830760435,
+   "scale": 0.4013656969102934
+  },
+  {
+   "name": "su_scholarship",
+   "median": 0.0,
+   "mean": 0.27501429388221843,
+   "scale": 0.44652147993426156
+  },
+  {
+   "name": "fees_owed",
+   "median": 0.0,
+   "mean": 0.10806174957118353,
+   "scale": 0.31045838344422
+  },
+  {
+   "name": "moved_from_home",
+   "median": 1.0,
+   "mean": 0.5546026300743282,
+   "scale": 0.4970096103587596
+  },
+  {
+   "name": "married",
+   "median": 0.0,
+   "mean": 0.0880503144654088,
+   "scale": 0.28336805851745434
+  },
+  {
+   "name": "evening_programme",
+   "median": 0.0,
+   "mean": 0.08976558033161806,
+   "scale": 0.2858456242788157
+  },
+  {
+   "name": "logins_total",
+   "median": 32.0,
+   "mean": 33.326472269868496,
+   "scale": 15.118600774699258
+  },
+  {
+   "name": "logins_last3",
+   "median": 15.0,
+   "mean": 16.165809033733563,
+   "scale": 7.879811702343497
+  },
+  {
+   "name": "logins_trend",
+   "median": -0.33,
+   "mean": -0.33163522012578617,
+   "scale": 1.9076365033051736
+  },
+  {
+   "name": "submitted_share",
+   "median": 0.83,
+   "mean": 0.7908747855917667,
+   "scale": 0.2162991934720334
+  },
+  {
+   "name": "missed_last3",
+   "median": 0.0,
+   "mean": 0.6380789022298456,
+   "scale": 0.8108413298274643
+  },
+  {
+   "name": "quiz_mean",
+   "median": 64.0,
+   "mean": 64.28922241280732,
+   "scale": 9.895057927033525
+  },
+  {
+   "name": "weeks_since_login",
+   "median": 0.0,
+   "mean": 0.037164093767867355,
+   "scale": 0.23499490147515714
+  }
+ ],
+ "categorical": [
+  {
+   "name": "programme",
+   "frequent": [
+    "Business Administration",
+    "Communication & Digital Media",
+    "Health Science",
+    "Learning & Innovation",
+    "Social Work",
+    "Software",
+    "Sustainable Biotechnology",
+    "Tourism"
+   ],
+   "has_infrequent": false
+  },
+  {
+   "name": "gender",
+   "frequent": [
+    "female",
+    "male"
+   ],
+   "has_infrequent": false
+  }
+ ],
+ "columns": [
+  "age",
+  "admission_grade",
+  "international",
+  "first_gen",
+  "su_scholarship",
+  "fees_owed",
+  "moved_from_home",
+  "married",
+  "evening_programme",
+  "logins_total",
+  "logins_last3",
+  "logins_trend",
+  "submitted_share",
+  "missed_last3",
+  "quiz_mean",
+  "weeks_since_login",
+  "programme_Business Administration",
+  "programme_Communication & Digital Media",
+  "programme_Health Science",
+  "programme_Learning & Innovation",
+  "programme_Social Work",
+  "programme_Software",
+  "programme_Sustainable Biotechnology",
+  "programme_Tourism",
+  "gender_female",
+  "gender_male"
+ ]
+}
