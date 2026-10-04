@@ -1,3 +1,4 @@
+# Standard-library path handling keeps the model directory relative to this app file.
 from pathlib import Path
 
 import pandas as pd
@@ -6,7 +7,10 @@ import streamlit as st
 import portable
 
 
+# The app reads the assignment's public synthetic student files.
 DATA_URL = "https://raw.githubusercontent.com/aaubs/ds-master/main/assignments/study-office/data/"
+# Keep this feature order identical to the columns used to train and export the model.
+# Post-week-6 fields, identifiers, and the outcome are intentionally excluded.
 FEATURES = [
     "age",
     "admission_grade",
@@ -28,6 +32,7 @@ FEATURES = [
     "weeks_since_login",
 ]
 
+# Configure the page before drawing any Streamlit elements.
 st.set_page_config(page_title="Study Office | Week 6", layout="wide")
 st.title("Study Office | Week 6")
 st.caption(
@@ -35,6 +40,7 @@ st.caption(
 )
 
 
+# Cache downloaded tables so changing a widget does not fetch the CSVs again.
 @st.cache_data
 def load_data():
     history = pd.read_csv(f"{DATA_URL}history_week6.csv")
@@ -42,29 +48,37 @@ def load_data():
     return history, current
 
 
+# Cache the portable model as a resource; it is loaded once per app process.
 @st.cache_resource
 def load_model():
     return portable.Model(str(Path(__file__).parent / "model"))
 
 
+# Score a copy so the original source data stays unchanged.
 def add_risk(frame, model):
     scored = frame.copy()
+    # The portable model returns each student's probability of leaving.
     scored["risk"] = pd.Series(
         model.predict_proba(scored[FEATURES]), index=scored.index, dtype="float64"
     )
+    # Rank high risk first; "first" makes tied scores resolve consistently.
     scored["priority"] = scored["risk"].rank(method="first", ascending=False).astype(int)
     return scored
 
 
+# Load past outcomes for validation and this week's students for the live list.
+# Only the 2025 cohort is used to evaluate the final contact rule.
 try:
     history, current = load_data()
     model = load_model()
     validation = add_risk(history.loc[history["cohort"] == 2025].copy(), model)
     current = add_risk(current, model)
 except Exception as error:
+    # Stop here rather than showing an empty or misleading dashboard.
     st.error(f"The data or model could not be loaded: {error}")
     st.stop()
 
+# These costs are editable assumptions in euros, separate from the assignment's DKK example.
 max_contacts = max(40, len(current))
 st.sidebar.subheader("Error-cost assumptions")
 false_alarm_cost_eur = st.sidebar.number_input(
@@ -73,6 +87,7 @@ false_alarm_cost_eur = st.sidebar.number_input(
 missed_student_cost_eur = st.sidebar.number_input(
     "Missed student cost (EUR)", min_value=0, value=100, step=10
 )
+# Start at the assignment's 40-contact capacity and keep both widget values in session state.
 default_capacity = min(40, max_contacts)
 st.session_state.setdefault("capacity_slider", default_capacity)
 st.session_state.setdefault("capacity_input", default_capacity)
@@ -82,9 +97,11 @@ st.session_state["capacity_slider"] = min(
 st.session_state["capacity_input"] = min(
     max_contacts, max(0, st.session_state["capacity_input"])
 )
+# Reconcile stale values when Streamlit reloads the script after an app-file change.
 st.session_state["capacity_input"] = st.session_state["capacity_slider"]
 
 
+# Each callback copies the changed widget's value into its sibling before rerunning the app.
 def sync_capacity_input():
     st.session_state["capacity_input"] = st.session_state["capacity_slider"]
 
@@ -93,6 +110,7 @@ def sync_capacity_slider():
     st.session_state["capacity_slider"] = st.session_state["capacity_input"]
 
 
+# Offer both a draggable control and direct integer entry for the same capacity.
 st.sidebar.slider(
     "Conversations available",
     min_value=0,
@@ -111,9 +129,12 @@ st.sidebar.number_input(
 )
 contact_capacity = int(st.session_state["capacity_input"])
 
+# Apply the capacity rule to both datasets: choose the highest-ranked students.
 current["selected"] = current["priority"] <= contact_capacity
 validation["contacted"] = validation["priority"] <= min(contact_capacity, len(validation))
 
+# Evaluate candidate risk cutoffs on 2025 using only the user's false-positive and
+# false-negative costs; this scenario does not include conversation costs or benefits.
 threshold_results = []
 for cutoff_percent in range(2, 91):
     cutoff = cutoff_percent / 100
@@ -130,7 +151,9 @@ for cutoff_percent in range(2, 91):
             + false_negatives * missed_student_cost_eur,
         }
     )
+# Select the tested cutoff with the smallest estimated error cost.
 best_cost_rule = min(threshold_results, key=lambda result: result["cost_eur"])
+# Also count the errors made by the actual capacity rule for a direct comparison.
 capacity_false_positives = int(
     ((validation["left"] == 0) & validation["contacted"]).sum()
 )
@@ -142,15 +165,18 @@ capacity_error_cost_eur = (
     + capacity_false_negatives * missed_student_cost_eur
 )
 total_error_cost_eur = false_alarm_cost_eur + missed_student_cost_eur
+# The cost-ratio break-even probability assumes only these two error costs.
 break_even_cutoff = (
     false_alarm_cost_eur / total_error_cost_eur if total_error_cost_eur else 0.0
 )
 
+# Split the dashboard into the current list, a retrospective rule check, and group analysis.
 this_week, validation_tab, groups_tab = st.tabs(
     ["This week's list", "2025 rule check", "Group comparison"]
 )
 
 with this_week:
+    # Summarize how many current students fit the selected capacity and show the highest score.
     selected = current.loc[current["selected"]].sort_values("priority")
     first_metric, second_metric, third_metric = st.columns(3)
     first_metric.metric("Students this week", f"{len(current):,}")
@@ -160,6 +186,7 @@ with this_week:
     else:
         third_metric.metric("Highest predicted risk", "No contacts selected")
 
+    # Show the ranked outreach list with week-6 fields useful for adviser review.
     table_columns = [
         column
         for column in [
@@ -199,6 +226,7 @@ with this_week:
     )
 
     if len(selected):
+        # Let an adviser inspect one selected student's observed week-6 information.
         st.subheader("Student context for adviser review")
         student_ids = selected["student_id"].astype(str).tolist()
         chosen_id = st.selectbox("Select a student from the contact list", student_ids)
@@ -224,10 +252,12 @@ with this_week:
         )
         st.dataframe(context, hide_index=True, width="stretch")
         st.caption(
+            # These are observed inputs, not causal explanations for the score.
             "These observations provide context for a conversation; they do not explain why a student has a score."
         )
 
 with validation_tab:
+    # Compare the capacity-selected students with the outcomes that became known later in 2025.
     true_left = validation["left"].astype(bool)
     contacted = validation["contacted"].astype(bool)
     tp = int((true_left & contacted).sum())
@@ -237,6 +267,7 @@ with validation_tab:
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
 
+    # Explain all four confusion-matrix groups and show precision/recall in plain language.
     st.subheader("What this capacity rule did on 2025")
     st.write(
         f"**{tp} students reached were later recorded as leaving**, "
@@ -251,6 +282,7 @@ with validation_tab:
         "These are retrospective classifications, not proof that a conversation would prevent leaving."
     )
 
+    # Show the user's EUR error-cost calculation beside the capacity-constrained cost.
     st.divider()
     st.subheader("Your error-cost scenario")
     st.caption(
@@ -274,6 +306,7 @@ with validation_tab:
     )
 
 with groups_tab:
+    # Compare actual outcomes, mean scores, and recall separately for domestic and international students.
     st.subheader("2025 outcomes under the same capacity rule")
     rows = []
     for value, label in [(0, "Domestic"), (1, "International")]:
@@ -289,6 +322,7 @@ with groups_tab:
             }
         )
     group_table = pd.DataFrame(rows)
+    # Include historical login averages to make a possible group-level signal difference visible.
     login_means = history.groupby("international", observed=True)["logins_total"].mean()
     group_table["Mean logins (history)"] = [login_means.get(0), login_means.get(1)]
     st.dataframe(
