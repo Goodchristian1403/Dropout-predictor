@@ -78,14 +78,25 @@ except Exception as error:
     st.error(f"The data or model could not be loaded: {error}")
     st.stop()
 
-# These costs are editable assumptions in euros, separate from the assignment's DKK example.
+# These are the assignment's editable DKK assumptions; each selected student incurs a conversation cost.
 max_contacts = max(40, len(current))
-st.sidebar.subheader("Error-cost assumptions")
-false_alarm_cost_eur = st.sidebar.number_input(
-    "False alarm cost (EUR)", min_value=0, value=10, step=5
+st.sidebar.subheader("Decision-cost assumptions (DKK)")
+false_alarm_cost_dkk = st.sidebar.number_input(
+    "False alarm cost (DKK)", min_value=0, value=2_000, step=500
 )
-missed_student_cost_eur = st.sidebar.number_input(
-    "Missed student cost (EUR)", min_value=0, value=100, step=10
+student_leaving_cost_dkk = st.sidebar.number_input(
+    "Cost of a student leaving (DKK)", min_value=0, value=60_000, step=5_000
+)
+conversation_cost_dkk = st.sidebar.number_input(
+    "Cost per conversation (DKK)", min_value=0, value=500, step=100
+)
+conversation_help_rate = st.sidebar.slider(
+    "Share of at-risk students helped",
+    min_value=0.0,
+    max_value=1.0,
+    value=0.30,
+    step=0.05,
+    format="percent",
 )
 # Start at the assignment's 40-contact capacity and keep both widget values in session state.
 default_capacity = min(40, max_contacts)
@@ -133,41 +144,56 @@ contact_capacity = int(st.session_state["capacity_input"])
 current["selected"] = current["priority"] <= contact_capacity
 validation["contacted"] = validation["priority"] <= min(contact_capacity, len(validation))
 
-# Evaluate candidate risk cutoffs on 2025 using only the user's false-positive and
-# false-negative costs; this scenario does not include conversation costs or benefits.
+# Evaluate candidate risk cutoffs on 2025. A contact costs DKK 500 whether that student
+# stays or leaves; a false alarm adds its DKK 2,000 worry cost. Contacting a leaver has
+# an expected benefit based on the assumed share of conversations that help.
 threshold_results = []
 for cutoff_percent in range(2, 91):
     cutoff = cutoff_percent / 100
     predicted_contact = validation["risk"] >= cutoff
-    false_positives = int(((validation["left"] == 0) & predicted_contact).sum())
-    false_negatives = int(((validation["left"] == 1) & ~predicted_contact).sum())
+    left = validation["left"] == 1
+    true_positives = int((left & predicted_contact).sum())
+    false_positives = int((~left & predicted_contact).sum())
+    false_negatives = int((left & ~predicted_contact).sum())
+    contacts = int(predicted_contact.sum())
     threshold_results.append(
         {
             "cutoff": cutoff,
-            "contacts": int(predicted_contact.sum()),
+            "contacts": contacts,
+            "true_positives": true_positives,
             "false_positives": false_positives,
             "false_negatives": false_negatives,
-            "cost_eur": false_positives * false_alarm_cost_eur
-            + false_negatives * missed_student_cost_eur,
+            "net_value_dkk": (
+                true_positives * conversation_help_rate * student_leaving_cost_dkk
+                - contacts * conversation_cost_dkk
+                - false_positives * false_alarm_cost_dkk
+            ),
         }
     )
-# Select the tested cutoff with the smallest estimated error cost.
-best_cost_rule = min(threshold_results, key=lambda result: result["cost_eur"])
-# Also count the errors made by the actual capacity rule for a direct comparison.
+# Select the tested cutoff with the highest estimated net value.
+best_value_rule = max(threshold_results, key=lambda result: result["net_value_dkk"])
+# Count the errors and expected net value for the capacity-constrained rule too.
+validation_left = validation["left"] == 1
 capacity_false_positives = int(
-    ((validation["left"] == 0) & validation["contacted"]).sum()
+    ((~validation_left) & validation["contacted"]).sum()
 )
 capacity_false_negatives = int(
-    ((validation["left"] == 1) & ~validation["contacted"]).sum()
+    (validation_left & ~validation["contacted"]).sum()
 )
-capacity_error_cost_eur = (
-    capacity_false_positives * false_alarm_cost_eur
-    + capacity_false_negatives * missed_student_cost_eur
+capacity_true_positives = int((validation_left & validation["contacted"]).sum())
+capacity_contacts = int(validation["contacted"].sum())
+capacity_net_value_dkk = (
+    capacity_true_positives * conversation_help_rate * student_leaving_cost_dkk
+    - capacity_contacts * conversation_cost_dkk
+    - capacity_false_positives * false_alarm_cost_dkk
 )
-total_error_cost_eur = false_alarm_cost_eur + missed_student_cost_eur
-# The cost-ratio break-even probability assumes only these two error costs.
+expected_value_per_contact = (
+    conversation_help_rate * student_leaving_cost_dkk + false_alarm_cost_dkk
+)
 break_even_cutoff = (
-    false_alarm_cost_eur / total_error_cost_eur if total_error_cost_eur else 0.0
+    (conversation_cost_dkk + false_alarm_cost_dkk) / expected_value_per_contact
+    if expected_value_per_contact
+    else 0.0
 )
 
 # Split the dashboard into the current list, a retrospective rule check, and group analysis.
@@ -282,26 +308,26 @@ with validation_tab:
         "These are retrospective classifications, not proof that a conversation would prevent leaving."
     )
 
-    # Show the user's EUR error-cost calculation beside the capacity-constrained cost.
+    # Compare the best tested threshold with the fixed-capacity rule using DKK net value.
     st.divider()
-    st.subheader("Your error-cost scenario")
+    st.subheader("Estimated value of the contact rule")
     st.caption(
-        "Edit the EUR costs in the sidebar. The rule below minimizes false-positive and false-negative costs on 2025; it does not include a separate contact cost or intervention benefit."
+        "A conversation costs the same whether the student later leaves or stays. A successful intervention is an assumed benefit; these estimates are not measured causal effects."
     )
     cost_one, cost_two, cost_three = st.columns(3)
     cost_one.metric(
-        "Lowest-cost validation cutoff",
-        f"{best_cost_rule['cutoff']:.0%}",
-        delta=f"{best_cost_rule['contacts']} contacts",
+        "Best tested cutoff",
+        f"{best_value_rule['cutoff']:.0%}",
+        delta=f"{best_value_rule['contacts']} contacts",
         delta_color="off",
     )
-    cost_two.metric("Error cost at cutoff", f"EUR {best_cost_rule['cost_eur']:,.0f}")
-    cost_three.metric("Cost under capacity rule", f"EUR {capacity_error_cost_eur:,.0f}")
+    cost_two.metric("Net value at cutoff", f"DKK {best_value_rule['net_value_dkk']:,.0f}")
+    cost_three.metric("Net value under capacity", f"DKK {capacity_net_value_dkk:,.0f}")
     st.caption(
-        f"Cost-ratio break-even is {break_even_cutoff:.1%}. "
-        f"At the selected capacity there are {capacity_false_positives} false alarms and "
-        f"{capacity_false_negatives} missed leavers. "
-        f"The cost-minimizing cutoff selects {best_cost_rule['contacts']} students; "
+        f"Individual break-even risk is {break_even_cutoff:.1%}. "
+        f"At capacity, {capacity_contacts} conversations cost DKK {capacity_contacts * conversation_cost_dkk:,.0f}; "
+        f"there are {capacity_false_positives} false alarms and {capacity_false_negatives} missed leavers. "
+        f"The best tested cutoff selects {best_value_rule['contacts']} students; "
         f"capacity is {contact_capacity}."
     )
 
